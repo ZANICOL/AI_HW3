@@ -3,7 +3,7 @@ from simulator import Simulator
 import random
 from numpy import log
 
-
+#test
 class Agent:
     def __init__(self, initial_state, player_number):
         self.ids = IDS
