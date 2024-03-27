@@ -4,7 +4,7 @@ from simulator import Simulator
 IDS = ['AI2']
 
 
-class Agent:
+class UCTAgent:
     def __init__(self, initial_state, player_number):
         self.ids = IDS
         self.player_number = player_number

@@ -21,7 +21,7 @@ class Game:
         self.agents = []
         self.score = [0, 0]
 
-    def initiate_agent(self, module, player_number, UCT_flag=False):
+    def initiate_agent(self, module, player_number, UCT_flag=True):
         """
         :param UCT_flag: Uses UCT_Agent instead of general one
         :return: agent

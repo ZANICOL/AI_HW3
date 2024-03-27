@@ -1,9 +1,13 @@
-IDS = ["Your IDS here"]
+import itertools
+import time
+import numpy as np
 from simulator import Simulator
 import random
-from numpy import log
 
-#test
+IDS = ["Your IDS here"]
+
+
+
 class Agent:
     def __init__(self, initial_state, player_number):
         self.ids = IDS
@@ -18,20 +22,21 @@ class Agent:
         raise NotImplementedError
 
 
-
 class UCTNode:
-    """
-    A class for a single node. not mandatory to use but may help you.
-    """
 
-    def __init__(self, parent=None, action=None,state=None):
+    def __init__(self, parent=None, action=None):
         self.parent = parent
-        self.children = list()
-        self.wins = 0
-        self.trys = 0
         self.action = action
-        self.state = state
-        # raise NotImplementedError
+        self.visits = 0
+        self.score = 0
+        self.avg_score = 0
+        self.children = []
+
+    def get_uct(self,):
+        if self.visits == 0:
+            return float('inf')
+        else:
+            return self.avg_score + (4 * np.log(self.parent.visits) / self.visits) ** 0.5
 
 
 
@@ -39,10 +44,8 @@ class UCTTree:
     """
     A class for a Tree. not mandatory to use but may help you.
     """
-
     def __init__(self):
-        self.root = UCTNode()
-        # raise NotImplementedError
+        raise NotImplementedError
 
 
 class UCTAgent:
@@ -55,78 +58,112 @@ class UCTAgent:
             if ship['player'] == player_number:
                 self.my_ships.append(ship_name)
 
-    def selection(self, UCT_tree): # check again
-        node_set = {UCT_tree.root}
-        max_node = None
-        cur_max_score = 0
-        while node_set != None:
-            node_i = node_set.pop()
-            if len(node_i.children) >= len(self.act(node_i)):
-                continue
-            node_set.add(node_i.children)
-            temp_score = (node_i.wins / node_i.trys) + (2 * log(node_i.parent.trys) / node_i.trys) ** 0.5
-            # if node_i.trys != 0:
-            #     temp_score =
-            # TO-DO maybey + -
-            if cur_max_score < temp_score:
-                cur_max_score = temp_score
-                max_node = node_i
 
-        return max_node
+    def selection(self, node, simulator):
+        selected_node = node
+        while len(selected_node.children):
+            children = [child for child in selected_node.children]
+            selected_node = max(children, key=lambda child: child.get_uct())
+            simulator.apply_action(selected_node.action, self.player_number)
+            actions = self.get_actions(simulator.get_state(), 3-self.player_number, simulator)
+            random_action = random.choice(actions)
+            simulator.apply_action(random_action, 3-self.player_number)
+        return selected_node
 
 
-    def expansion(self, UCT_tree, parent_node):
-        whole_actions = self.act(parent_node.state)
-        new_state =
-        for action_i in whole_actions
-        current_node = UCTNode(parent_node,parent_node)
+    def expansion(self, node, simulator):
+        actions = self.get_actions(simulator.get_state(), self.player_number, simulator)
+        for action in actions:
+            node.children.append(UCTNode(node, action))
 
 
-        raise NotImplementedError
+    def simulation(self, simulator, player):
+        if simulator.turns_to_go == 0:
+            players_score = simulator.get_score()
+            return players_score['player 1'] if player else players_score['player 2']
 
-    def simulation(self):
-        raise NotImplementedError
+        actions = self.get_actions(simulator.get_state(), player, simulator)
+        action = random.choice(actions)
+        simulator.act(action, player)
+        return self.simulation(simulator, 3 - player)
 
-    def backpropagation(self, simulation_result):
-        raise NotImplementedError
+    def backpropagation(self, node, simulation_result):
+        while node:
+            node.visits += 1
+            node.score += simulation_result
+            node.avg_score = node.score / node.visits
+            node = node.parent
 
     def act(self, state):
-        actions = {}
-        self.simulator.set_state(state)
-        collected_treasures = []
-        for ship in self.my_ships:
-            actions[ship] = set()
-            neighboring_tiles = self.simulator.neighbors(state["pirate_ships"][ship]["location"])
-            for tile in neighboring_tiles:
-                actions[ship].add(("sail", ship, tile))
-            if state["pirate_ships"][ship]["capacity"] > 0:
-                for treasure in state["treasures"].keys():
-                    if state["pirate_ships"][ship]["location"] in self.simulator.neighbors(
-                            state["treasures"][treasure]["location"]) and treasure not in collected_treasures:
-                        actions[ship].add(("collect", ship, treasure))
-                        collected_treasures.append(treasure)
-            for treasure in state["treasures"].keys():
-                if (state["pirate_ships"][ship]["location"] == state["base"]
-                        and state["treasures"][treasure]["location"] == ship):
-                    actions[ship].add(("deposit", ship, treasure))
-            for enemy_ship_name in state["pirate_ships"].keys():
-                if (state["pirate_ships"][ship]["location"] == state["pirate_ships"][enemy_ship_name]["location"] and
-                        self.player_number != state["pirate_ships"][enemy_ship_name]["player"]):
-                    actions[ship].add(("plunder", ship, enemy_ship_name))
-            actions[ship].add(("wait", ship))
+        root = UCTNode()
+        start_time = time.time()
+        while time.time() - start_time < 4.8:
+            simulator = Simulator(state)
+            new_node = self.selection(root, simulator)
+            if simulator.turns_to_go != 0:
+                self.expansion(new_node, simulator)
+            score = self.simulation(simulator, self.player_number)
+            self.backpropagation(new_node, score)
+        #for child in root.children:
+        #    print(child.action, child.score, child.avg_score)
+        max_score_child = max(root.children, key=lambda child: child.avg_score)
+        print(state)
+        return max_score_child.action
 
-        while True:
-            whole_action = []
-            for atomic_actions in actions.values():
-                for action in atomic_actions:
-                    if action[0] == "deposit":
-                        whole_action.append(action)
-                        break
-                    if action[0] == "collect":
-                        whole_action.append(action)
-                        break
-                else:
-                    whole_action.append(random.choice(list(atomic_actions)))
-            whole_action = tuple(whole_action)
-            if self.simulator.check_if_action_legal(whole_action, self.player_number):
-                return whole_action
+
+    def get_actions(self, state, player, simulator):
+        legal_actions = []
+        all_actions = {}
+        simulator.state = state
+        for pirate_ship_name, pirate_ship in state['pirate_ships'].items():
+            if pirate_ship['player'] == player:
+                x, y = pirate_ship['location']
+                new_locs = [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
+
+                #sail actions
+                sail_actions = []
+                for new_x, new_y in new_locs:
+                    if 0 <= new_x < len(state['map']) and 0 <= new_y < len(state['map'][0]) and state['map'][new_x][new_y] != 'I':
+                        sail_actions.append(("sail", pirate_ship_name, (new_x, new_y)))
+
+                #deposit actions
+                deposit_actions = []
+                if state['map'][x][y] == 'B' and pirate_ship['capacity'] < 2:
+                    for treasure_name, treasure in state['treasures'].items():
+                        if treasure['location'] == pirate_ship_name:
+                            deposit_actions.append(("deposit", pirate_ship_name, treasure_name))
+
+
+                #collect actions
+                collect_actions = []
+                if pirate_ship['capacity'] != 0:
+                    for treasure_name, treasure in state['treasures'].items():
+                        if treasure['location'] in new_locs:
+                            collect_actions.append(("collect", pirate_ship_name, treasure_name))
+
+                #plunder actions
+                plunder_actions = []
+                for adv_name, adv in state['pirate_ships'].items():
+                    if adv['player'] != player and (x, y) == adv['location'] and adv['capacity'] < 2:
+                        plunder_actions.append(("plunder", pirate_ship_name, adv_name))
+
+                all_actions[pirate_ship_name] = [('wait', pirate_ship_name)] + sail_actions + collect_actions + deposit_actions + plunder_actions
+
+        all_actions_product = list(itertools.product(*all_actions.values()))
+
+        for actions in all_actions_product:
+            if _is_action_mutex(actions):
+                legal_actions.append(actions)
+        return legal_actions
+
+def _is_action_mutex(global_action):
+    if len(set([a[1] for a in global_action])) != len(global_action):
+        return False
+    collect_actions = [a for a in global_action if a[0] == 'collect']
+    if len(collect_actions) > 1:
+        treasures_to_collect = set([a[2] for a in collect_actions])
+        if len(treasures_to_collect) != len(collect_actions):
+            return False
+    return True
+
+
