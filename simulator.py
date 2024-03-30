@@ -30,8 +30,8 @@ class Simulator:
         x, y = location[0], location[1]
         neighbors = [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
         for neighbor in tuple(neighbors):
-            if neighbor[0] < 0 or neighbor[0] >= self.dimensions[1] or neighbor[1] < 0 or neighbor[1] >= \
-                    self.dimensions[0] or self.state['map'][neighbor[0]][neighbor[1]] == 'I':
+            if neighbor[0] < 0 or neighbor[0] >= self.dimensions[0] or neighbor[1] < 0 or neighbor[1] >= \
+                    self.dimensions[1] or self.state['map'][neighbor[0]][neighbor[1]] == 'I':
                 neighbors.remove(neighbor)
         return neighbors
 
