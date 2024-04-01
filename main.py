@@ -134,8 +134,14 @@ def main():
     }
     game = Game(an_input)
     results = game.play_game()
-    print(f'Score for {exp3.IDS} is {results[0]}, score for {sample_agent.IDS} is {results[1]}')
+    return(f'Score for {exp3.IDS} is {results[0]}, score for {sample_agent.IDS} is {results[1]}')
 
 
 if __name__ == '__main__':
-    main()
+    results_of_run = []
+    for i in range(20):
+        print('epoch = ', i)
+        result = main()
+        results_of_run.append(result)
+    print(results_of_run)
+

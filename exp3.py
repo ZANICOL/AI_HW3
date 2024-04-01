@@ -62,17 +62,17 @@ class UCTAgent:
     def selection(self, node, simulator):
         selected_node = node
         while len(selected_node.children):
-            children = [child for child in selected_node.children]
+            children = [child for child in selected_node.children if is_action_legal(simulator, child.action, self.player_number)]
             selected_node = max(children, key=lambda child: child.get_uct())
             simulator.apply_action(selected_node.action, self.player_number)
-            actions = self.get_actions(simulator.get_state(), 3-self.player_number, simulator)
+            actions = self.get_actions(simulator.state, 3-self.player_number, simulator)
             random_action = random.choice(actions)
             simulator.apply_action(random_action, 3-self.player_number)
         return selected_node
 
 
     def expansion(self, node, simulator):
-        actions = self.get_actions(simulator.get_state(), self.player_number, simulator)
+        actions = self.get_actions(simulator.state, self.player_number, simulator)
         for action in actions:
             node.children.append(UCTNode(node, action))
 
@@ -82,8 +82,10 @@ class UCTAgent:
             players_score = simulator.get_score()
             return players_score['player 1'] if player else players_score['player 2']
 
-        actions = self.get_actions(simulator.get_state(), player, simulator)
+        actions = self.get_actions(simulator.state, player, simulator)
         action = random.choice(actions)
+        while not is_action_legal(simulator, action, player):
+            action = random.choice(actions)
         simulator.act(action, player)
         return self.simulation(simulator, 3 - player)
 
@@ -97,17 +99,16 @@ class UCTAgent:
     def act(self, state):
         root = UCTNode()
         start_time = time.time()
-        while time.time() - start_time < 4.8:
+        while time.time() - start_time < 4.7:
             simulator = Simulator(state)
             new_node = self.selection(root, simulator)
             if simulator.turns_to_go != 0:
                 self.expansion(new_node, simulator)
             score = self.simulation(simulator, self.player_number)
             self.backpropagation(new_node, score)
-        #for child in root.children:
-        #    print(child.action, child.score, child.avg_score)
-        max_score_child = max(root.children, key=lambda child: child.avg_score)
-        print(state)
+        possible_actions = self.get_actions(state, self.player_number, simulator)
+        children = [child for child in root.children if child.action in possible_actions]
+        max_score_child = max(children, key=lambda child: child.avg_score)
         return max_score_child.action
 
 
@@ -167,3 +168,100 @@ def _is_action_mutex(global_action):
     return True
 
 
+def is_action_legal(simulator, action, player):
+    def _is_move_action_legal(move_action, player):
+        pirate_name = move_action[1]
+        if pirate_name not in simulator.state['pirate_ships'].keys():
+            return False
+        if player != simulator.state['pirate_ships'][pirate_name]['player']:
+            return False
+        l1 = simulator.state['pirate_ships'][pirate_name]['location']
+        l2 = move_action[2]
+        if l2 not in simulator.neighbors(l1):
+            return False
+        return True
+
+    def _is_collect_action_legal(collect_action, player):
+        pirate_name = collect_action[1]
+        treasure_name = collect_action[2]
+        if treasure_name not in simulator.state['treasures']:
+            return False
+        if player != simulator.state['pirate_ships'][pirate_name]['player']:
+            return False
+        # check adjacent position
+        l1 = simulator.state['treasures'][treasure_name]['location']
+        if simulator.state['pirate_ships'][pirate_name]['location'] not in simulator.neighbors(l1):
+            return False
+        # check ship capacity
+        if simulator.state['pirate_ships'][pirate_name]['capacity'] <= 0:
+            return False
+        return True
+
+    def _is_deposit_action_legal(deposit_action, player):
+        pirate_name = deposit_action[1]
+        treasure_name = deposit_action[2]
+        if treasure_name not in simulator.state['treasures']:
+            return False
+        # check same position
+        if player != simulator.state['pirate_ships'][pirate_name]['player']:
+            return False
+        if simulator.state["pirate_ships"][pirate_name]["location"] != simulator.base_location:
+            return False
+        if simulator.state['treasures'][treasure_name]['location'] != pirate_name:
+            return False
+        return True
+
+    def _is_plunder_action_legal(plunder_action, player):
+        pirate_1_name = plunder_action[1]
+        pirate_2_name = plunder_action[2]
+        if player != simulator.state["pirate_ships"][pirate_1_name]["player"]:
+            return False
+        if simulator.state["pirate_ships"][pirate_1_name]["location"] != simulator.state["pirate_ships"][pirate_2_name]["location"]:
+            return False
+        return True
+
+    def _is_action_mutex(global_action):
+        assert type(
+            global_action) == tuple, "global action must be a tuple"
+        # one action per ship
+        if len(set([a[1] for a in global_action])) != len(global_action):
+            return True
+        # collect the same treasure
+        collect_actions = [a for a in global_action if a[0] == 'collect']
+        if len(collect_actions) > 1:
+            treasures_to_collect = set([a[2] for a in collect_actions])
+            if len(treasures_to_collect) != len(collect_actions):
+                return True
+
+        return False
+
+    players_pirates = [pirate for pirate in simulator.state['pirate_ships'].keys() if simulator.state['pirate_ships'][pirate]['player'] == player]
+
+    if len(action) != len(players_pirates):
+        return False
+    for atomic_action in action:
+        # trying to act with a pirate that is not yours
+        if atomic_action[1] not in players_pirates:
+            return False
+        # illegal sail action
+        if atomic_action[0] == 'sail':
+            if not _is_move_action_legal(atomic_action, player):
+                return False
+        # illegal collect action
+        elif atomic_action[0] == 'collect':
+            if not _is_collect_action_legal(atomic_action, player):
+                return False
+        # illegal deposit action
+        elif atomic_action[0] == 'deposit':
+            if not _is_deposit_action_legal(atomic_action, player):
+                return False
+        # illegal plunder action
+        elif atomic_action[0] == "plunder":
+            if not _is_plunder_action_legal(atomic_action, player):
+                return False
+        elif atomic_action[0] != 'wait':
+            return False
+    # check mutex action
+    if _is_action_mutex(action):
+        return False
+    return True
